@@ -11,6 +11,7 @@ struct MacTwinApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(state)
+                .onAppear { CrashGuard.shared.install() }
                 .preferredColorScheme(nil)
         }
     }

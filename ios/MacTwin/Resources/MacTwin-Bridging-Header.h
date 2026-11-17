@@ -18,3 +18,4 @@ void    mactwin_set_exit_code(int32_t code);
 int     mactwin_exit_was_called(void);
 void    mactwin_reset_state(void);
 int     mactwin_notes_copy(char *buf, int bufsize);
+#import <fcntl.h>
