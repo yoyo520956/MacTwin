@@ -1,7 +1,7 @@
 name: Verify Mach-O Parser
 
-# M0 持续验证：每次推送都重新下载真 macOS 二进制，
-# 跑解析器 + 交叉验证。解析算法一旦回归，CI 立刻红。
+# M0 持续验证：每次推送都重新下载真 macOS 二进制，跑解析器 + 交叉验证。
+# 解析算法一旦回归，CI 立刻红。
 
 on:
   push:
@@ -16,36 +16,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Python deps
-        run: python3 -m pip install --quiet --upgrade pip
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # working-directory 要求目录必须已存在（git 不提交空目录）
+      - name: 准备 fixtures 子目录
+        run: mkdir -p fixtures/work fixtures/jqwork fixtures/orjsonwork fixtures/reports
+
       # ── 样本 1：VS Code for macOS arm64（Electron，196MB framework）──
       - name: Fetch VS Code macOS arm64
+        working-directory: fixtures/work
         run: |
-          mkdir -p fixtures/work
-          cd fixtures/work
           URL=$(curl -sI "https://update.code.visualstudio.com/latest/darwin-arm64/stable" \
                 | grep -i '^location' | tail -1 | tr -d '\r' | awk '{print $2}')
           echo "URL: $URL"
-          echo "下载中…"
           curl -L -o vscode.zip "$URL"
           ls -la vscode.zip
-          unzip -q vscode.zip "Visual Studio Code.app/Contents/MacOS/*" \
-                            "Visual Studio Code.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework"
-          cp "Visual Studio Code.app/Contents/MacOS/Code" "$GITHUB_WORKSPACE/fixtures/vscode_Code"
+          unzip -q vscode.zip \
+            "Visual Studio Code.app/Contents/MacOS/*" \
+            "Visual Studio Code.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework"
+          cp "Visual Studio Code.app/Contents/MacOS/Code" ../vscode_Code
           cp "Visual Studio Code.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework" \
-             "$GITHUB_WORKSPACE/fixtures/vscode_electron_fw"
+             ../vscode_electron_fw
+          ls -la ../ | grep vscode
           echo "✅ VS Code 样本就绪"
-          ls -la "$GITHUB_WORKSPACE/fixtures/" | grep -E "vscode"
 
       # ── 样本 2：jq（Homebrew bottle，chained fixups 64_OFFSET）──
       - name: Fetch jq macOS arm64
+        working-directory: fixtures/jqwork
         run: |
-          cd fixtures && mkdir -p jqwork && cd jqwork
           F=$(curl -s https://formulae.brew.sh/api/formula/jq.json)
           SHA=$(printf '%s' "$F" | python3 -c "import json,sys;print(json.load(sys.stdin)['bottle']['stable']['files']['arm64_sonoma']['sha256'])")
           TOK=$(curl -s "https://ghcr.io/token?service=ghcr.io&scope=repository:homebrew/core/jq:pull" \
@@ -53,75 +53,82 @@ jobs:
           curl -L -H "Authorization: Bearer $TOK" \
                -o jq.tar.gz "https://ghcr.io/v2/homebrew/core/jq/blobs/sha256:$SHA"
           ls -la jq.tar.gz
-          tar xzf jq.tar.gz jq/*/bin/jq
+          # GNU tar 默认不展开通配符，必须显式 --wildcards
+          tar --wildcards -xzf jq.tar.gz 'jq/*/bin/jq'
           JQ=$(find . -name jq -type f | head -1)
-          cp "$JQ" "$GITHUB_WORKSPACE/fixtures/jq_macos"
+          cp "$JQ" ../jq_macos
           echo "✅ jq 样本就绪: $JQ"
+          ls -la ../ | grep jq_macos
 
       # ── 样本 3：orjson（PyPI universal2 wheel，dyld_info 老格式）──
       - name: Fetch orjson macOS arm64 slice
+        working-directory: fixtures/orjsonwork
         run: |
-          mkdir -p fixtures/orjsonwork
-          cd fixtures/orjsonwork
           python3 -m pip download --no-deps --only-binary=:all: \
-            --platform macosx_11_0_arm64 --python-version 3.11 --implementation cp --abi cp311 \
-            "orjson==3.10.7" -d .
+            --platform macosx_11_0_arm64 --python-version 3.11 \
+            --implementation cp --abi cp311 "orjson==3.10.7" -d .
           unzip -q orjson-3.10.7-*.whl "orjson/*.so"
           SO=$(find . -name "*.so" | head -1)
-          cp "$SO" "$GITHUB_WORKSPACE/fixtures/orjson.orig"
-          cd "$GITHUB_WORKSPACE"
-          # universal2 → 切出 arm64（回到仓库根目录再跑，否则相对路径错）
-          python3 tools/thin.py fixtures/orjson.orig -o fixtures/orjson_arm64.so --arch arm64
+          cp "$SO" ../orjson.orig
+          cd ..
+          # universal2 → 切出 arm64
+          python3 ../tools/thin.py orjson.orig -o orjson_arm64.so --arch arm64
+          echo "✅ orjson 样本就绪"
 
-      - name: Run parser on every fixture
+      - name: 列出所有下载到的样本
         run: |
-          mkdir -p fixtures/reports
-          fail=0
-          for f in fixtures/jq_macos fixtures/vscode_Code fixtures/vscode_electron_fw; do
-            [ -f "$f" ] || { echo "缺少 $f"; continue; }
-            echo "### $f"
-            python3 tools/macho.py "$f" | tee "fixtures/reports/$(basename $f).txt" || true
-          done
-          [ -f fixtures/orjson_arm64.so ] && python3 tools/macho.py fixtures/orjson_arm64.so | tee fixtures/reports/orjson_arm64.txt || true
-
-      - name: Cross-validate parser correctness
-        run: |
-          fail=0
-          for f in fixtures/jq_macos fixtures/vscode_Code fixtures/vscode_electron_fw; do
+          cd fixtures
+          for f in jq_macos vscode_Code vscode_electron_fw orjson_arm64.so; do
             if [ -f "$f" ]; then
-              echo "### crosscheck $f"
-              python3 tools/crosscheck.py "$f" || fail=1
+              printf "  %-22s %10s 字节\n" "$f" "$(stat -c%s "$f")"
             else
-              echo "⚠️ 缺少 $f，跳过"
+              printf "  %-22s ❌ 缺失\n" "$f"
             fi
           done
-          if [ -f fixtures/orjson_arm64.so ]; then
-            echo "### crosscheck orjson_arm64.so"
-            python3 tools/crosscheck.py fixtures/orjson_arm64.so || fail=1
-          else
-            echo "⚠️ 缺少 orjson_arm64.so，跳过"
-          fi
+
+      - name: 解析每个样本并留报告
+        run: |
+          mkdir -p fixtures/reports
+          for f in jq_macos vscode_Code vscode_electron_fw orjson_arm64.so; do
+            if [ -f "fixtures/$f" ]; then
+              echo "### $f"
+              python3 tools/macho.py "fixtures/$f" | tee "fixtures/reports/$f.txt"
+            else
+              echo "⚠️ 跳过 $f"
+            fi
+          done
+
+      - name: 交叉验证解析正确性（门禁）
+        run: |
+          fail=0
+          for f in jq_macos vscode_Code vscode_electron_fw orjson_arm64.so; do
+            if [ -f "fixtures/$f" ]; then
+              echo "### crosscheck $f"
+              python3 tools/crosscheck.py "fixtures/$f" || fail=1
+            else
+              echo "⚠️ 跳过 $f（文件不存在）"
+            fi
+          done
           echo "crosscheck_fail=$fail" >> $GITHUB_ENV
 
-      - name: Fail build if parser regressed
+      - name: 缺口摘要
+        run: |
+          for f in jq_macos vscode_electron_fw; do
+            if [ -f "fixtures/$f" ]; then
+              echo "--- $f ---"
+              python3 tools/macho.py "fixtures/$f" | sed -n '/可行性评估/,/结论/p'
+            fi
+          done
+
+      - name: Fail if parser regressed
         run: |
           if [ "$crosscheck_fail" != "0" ]; then
             echo "::error::Mach-O 解析交叉验证失败 —— 解析器有回归"
             exit 1
           fi
-          echo "所有样本交叉验证通过"
+          echo "✅ 所有样本交叉验证通过"
 
-      - name: Print gap summary
-        run: |
-          echo "=== 符号缺口摘要 ==="
-          for f in fixtures/jq_macos fixtures/vscode_electron_fw; do
-            [ -f "$f" ] || continue
-            echo "--- $f ---"
-            python3 tools/macho.py "$f" 2>/dev/null | sed -n '/── 可行性评估/,/结论/p'
-          done
-
-      - name: Upload reports
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: macho-analysis-reports
           path: fixtures/reports/
