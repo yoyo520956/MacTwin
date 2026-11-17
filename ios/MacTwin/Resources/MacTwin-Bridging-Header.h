@@ -1,6 +1,6 @@
 //
 //  MacTwin-Bridging-Header.h
-//  ObjC ↔ Swift 桥接
+//  ObjC/C ↔ Swift 桥接
 //
 
 #import <Foundation/Foundation.h>
@@ -9,6 +9,12 @@
 #import <sys/mman.h>
 #import <dlfcn.h>
 #import <errno.h>
+#import <unistd.h>
 
-// AppKit 兼容层（P5 起实现）
-// #import "AppKitShim.h"
+// ShimBridge.c —— 防崩 shim
+void *mactwin_shim_lookup(const char *name);
+int32_t mactwin_last_exit_code(void);
+void    mactwin_set_exit_code(int32_t code);
+int     mactwin_exit_was_called(void);
+void    mactwin_reset_state(void);
+int     mactwin_notes_copy(char *buf, int bufsize);
