@@ -1,0 +1,100 @@
+name: Build IPA
+
+# 在 macOS runner 上真正编译 Swift 代码，产出未签名 IPA。
+# iSH 没有 Xcode，这是唯一能验证代码能否编译的地方。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - ".github/workflows/build-ipa.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install xcodegen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate --spec project.yml
+
+      - name: Swift 静态自检（括号/引号）
+        run: python3 tools/swiftlint_lite.py ios/
+
+      - name: Build (Release, iphoneos, 不签名)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project MacTwin.xcodeproj \
+            -scheme MacTwin \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/MacTwin.xcarchive" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            archive 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: 显示编译错误（若有）
+        if: failure()
+        run: |
+          echo "===== 编译错误摘要 ====="
+          grep -nE "error:|warning:" "$RUNNER_TEMP/build.log" | head -60 || true
+
+      - name: Package unsigned IPA
+        run: |
+          APP="$RUNNER_TEMP/MacTwin.xcarchive/Products/Applications/MacTwin.app"
+          if [ ! -d "$APP" ]; then echo "::error::找不到 MacTwin.app"; ls -R "$RUNNER_TEMP/MacTwin.xcarchive" | head -40; exit 1; fi
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/Payload/"
+          cd "$RUNNER_TEMP"
+          zip -qry MacTwin-unsigned.ipa Payload
+          ls -la MacTwin-unsigned.ipa
+          shasum -a 256 MacTwin-unsigned.ipa | tee MacTwin.sha256
+
+      - name: 验证 IPA 结构
+        run: |
+          cd "$RUNNER_TEMP"
+          unzip -l MacTwin-unsigned.ipa | head -20
+          BIN="Payload/MacTwin.app/MacTwin"
+          unzip -q MacTwin-unsigned.ipa -d verify
+          file "verify/$BIN"
+          echo "--- 架构 ---"
+          lipo -info "verify/$BIN" || true
+          echo "--- 嵌入的 entitlements ---"
+          codesign -d --entitlements - "verify/Payload/MacTwin.app" 2>&1 | head -20 || echo "（未签名，符合预期）"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MacTwin-ipa
+          path: |
+            ${{ runner.temp }}/MacTwin-unsigned.ipa
+            ${{ runner.temp }}/MacTwin.sha256
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: ${{ runner.temp }}/build.log
+          if-no-files-found: warn

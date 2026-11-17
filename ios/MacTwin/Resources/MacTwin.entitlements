@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 侧载自签用：允许调试器附加，StikJIT/StikDebug 靠这个开启 JIT -->
+	<key>get-task-allow</key>
+	<true/>
+	<!-- iOS 14+ 动态代码签名，加载的代码页需要它才能 mprotect 成可执行 -->
+	<key>dynamic-codesigning</key>
+	<true/>
+	<!-- 允许读写 App 自己的容器内任意文件 -->
+	<key>com.apple.private.security.no-sandbox</key>
+	<true/>
+</dict>
+</plist>

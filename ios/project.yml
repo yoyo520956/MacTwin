@@ -1,0 +1,50 @@
+name: MacTwin
+options:
+  bundleIdPrefix: com.mactwin
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    ENABLE_BITCODE: NO
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+    ONLY_ACTIVE_ARCH: NO
+    ARCHS: arm64
+    TARGETED_DEVICE_FAMILY: "1,2"
+
+targets:
+  MacTwin:
+    type: application
+    platform: iOS
+    sources:
+      - path: MacTwin
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mactwin.app
+        CODE_SIGN_ENTITLEMENTS: MacTwin/Resources/MacTwin.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: MacTwin/Resources/MacTwin-Bridging-Header.h
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    info:
+      path: MacTwin/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: MacTwin
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIApplicationSupportsIndirectInputEvents: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UIFileSharingEnabled: true
+        ITSAppUsesNonExemptEncryption: false
+        UIRequiredDeviceCapabilities:
+          - arm64
