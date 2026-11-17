@@ -79,6 +79,15 @@ jobs:
         run: |
           APP="$RUNNER_TEMP/MacTwin.xcarchive/Products/Applications/MacTwin.app"
           if [ ! -d "$APP" ]; then echo "::error::找不到 MacTwin.app"; ls -R "$RUNNER_TEMP/MacTwin.xcarchive" | head -40; exit 1; fi
+          # 注入内置 demo（Mach-O 不会自动作为资源打包）
+          if [ -f "ios/MacTwin/Resources/hello-macos" ]; then
+            cp "ios/MacTwin/Resources/hello-macos" "$APP/hello-macos"
+            chmod +x "$APP/hello-macos"
+            echo "已注入 hello-macos 到 $APP"
+            file "$APP/hello-macos"
+          else
+            echo "::warning::内置 demo 缺失（编译步骤可能失败）"
+          fi
           mkdir -p "$RUNNER_TEMP/Payload"
           cp -R "$APP" "$RUNNER_TEMP/Payload/"
           cd "$RUNNER_TEMP"

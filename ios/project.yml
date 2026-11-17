@@ -24,6 +24,8 @@ targets:
     platform: iOS
     sources:
       - path: MacTwin
+        excludes:
+          - "Resources/hello-macos"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mactwin.app
