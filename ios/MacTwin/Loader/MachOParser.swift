@@ -124,6 +124,23 @@ private struct Reader {
 
 enum MachOParser {
 
+    // 直接用 withUnsafeBytes 读定长整数，避免 subdata 造成的类型推导超时
+    private static func readU16(_ d: Data, _ at: Int) -> UInt16 {
+        guard at >= 0, at + 2 <= d.count else { return 0 }
+        return d.withUnsafeBytes { UInt16(littleEndian: $0.load(fromByteOffset: at, as: UInt16.self)) }
+    }
+    private static func readU32(_ d: Data, _ at: Int) -> UInt32 {
+        guard at >= 0, at + 4 <= d.count else { return 0 }
+        return d.withUnsafeBytes { UInt32(littleEndian: $0.load(fromByteOffset: at, as: UInt32.self)) }
+    }
+    private static func readU64(_ d: Data, _ at: Int) -> UInt64 {
+        guard at >= 0, at + 8 <= d.count else { return 0 }
+        return d.withUnsafeBytes { UInt64(littleEndian: $0.load(fromByteOffset: at, as: UInt64.self)) }
+    }
+    private static func readI32(_ d: Data, _ at: Int) -> Int32 {
+        Int32(bitPattern: readU32(d, at))
+    }
+
     static func parse(_ data: Data, path: String = "") throws -> MachOImage {
         guard data.count >= 32 else {
             throw MachOParseError.notMachO("文件太小（\(data.count) 字节）")
@@ -174,7 +191,7 @@ enum MachOParser {
 
             switch cmd {
             case MachOConstants.lcSegment64:
-                let seg = try parseSegment(r: r, end: cmdEnd)
+                let seg = try parseSegment(r: &r, end: cmdEnd)
                 img.segments.append(seg)
 
             case MachOConstants.lcSymtab:
@@ -337,9 +354,6 @@ enum MachOParser {
         let u32at = { (o: Int) -> UInt32 in
             data.subdata(in: (off + o)..<(off + o + 4)).withUnsafeBytes { UInt32(littleEndian: $0.load(as: UInt32.self)) }
         }
-        let u16at = { (o: Int) -> UInt16 in
-            data.subdata(in: (off + o)..<(off + o + 2)).withUnsafeBytes { UInt16(littleEndian: $0.load(as: UInt16.self)) }
-        }
 
         let fixupsVersion = u32at(0)
         _ = fixupsVersion
@@ -354,44 +368,46 @@ enum MachOParser {
         let symBase = off + Int(symbolsOffset)
         var table: [MachOImport] = []
 
-        for i in 0..<importsCount {
+        let count = Int(importsCount)
+        for k in 0..<count {
             var ordinal: Int32 = 0
             var weak = false
             var nameOff = 0
             var addend = 0
+
             switch importsFormat {
             case MachOConstants.chainedImport:
-                let raw = u32at(impBase - off + i * 4)
+                let raw = UInt32(readU32(data, impBase + k * 4))
                 ordinal = Int32(raw & 0xFF)
                 weak = ((raw >> 8) & 1) == 1
                 nameOff = Int((raw >> 9) & 0x7FFFFF)
+
             case MachOConstants.chainedImportAddend:
-                let raw = u32at(impBase - off + i * 8)
+                let raw = UInt32(readU32(data, impBase + k * 8))
                 ordinal = Int32(raw & 0xFF)
                 weak = ((raw >> 8) & 1) == 1
                 nameOff = Int((raw >> 9) & 0x7FFFFF)
-                let a = Int32(data.subdata(in: (impBase + i * 8 + 4)..<(impBase + i * 8 + 8))
-                    .withUnsafeBytes { Int32(littleEndian: $0.load(as: Int32.self)) })
-                addend = Int(a)
+                addend = Int(readI32(data, impBase + k * 8 + 4))
+
             case MachOConstants.chainedImportAddend64:
-                let raw = data.subdata(in: (impBase + i * 16)..<(impBase + i * 16 + 8))
-                    .withUnsafeBytes { UInt64(littleEndian: $0.load(as: UInt64.self)) }
+                let raw = UInt64(readU64(data, impBase + k * 16))
                 ordinal = Int32(raw & 0xFFFF)
                 weak = ((raw >> 16) & 1) == 1
                 nameOff = Int((raw >> 32) & 0xFFFFFFFF)
-                let a = data.subdata(in: (impBase + i * 16 + 8)..<(impBase + i * 16 + 16))
-                    .withUnsafeBytes { Int32(littleEndian: $0.load(as: Int32.self)) }
-                addend = Int(a)
+                addend = Int(readI32(data, impBase + k * 16 + 8))
+
             default:
                 break
             }
-            if importsFormat != MachOConstants.chainedImportAddend64, ordinal > 0x7F {
-                ordinal -= 0x100
-            } else if importsFormat == MachOConstants.chainedImportAddend64, ordinal > 0x7FFF {
-                ordinal -= 0x10000
+
+            // lib_ordinal 是有符号的：0xF1..0xFF → -15..-1
+            if importsFormat != MachOConstants.chainedImportAddend64 {
+                if ordinal > 0x7F { ordinal -= 0x100 }
+            } else {
+                if ordinal > 0x7FFF { ordinal -= 0x10000 }
             }
+
             let rawName = Reader(data).cString(at: symBase + nameOff)
-            // Mach-O 符号名带下划线前缀（_malloc），dlsym 要 malloc
             let name = rawName.hasPrefix("_") ? String(rawName.dropFirst()) : rawName
             table.append(MachOImport(name: name, ordinal: ordinal, addend: addend, weak: weak))
         }
@@ -399,23 +415,22 @@ enum MachOParser {
 
         // starts_in_image
         let si = off + Int(startsOffset)
-        let segCount = u32at(si - off)
+        let segCount = Int(readU32(data, si))
         for segIdx in 0..<segCount {
-            let infoOff = u32at(si - off + 4 + Int(segIdx) * 4)
+            let infoOff = readU32(data, si + 4 + segIdx * 4)
             if infoOff == 0 { continue }
             let ss = si + Int(infoOff)
             guard ss + 22 <= data.count else { continue }
-            let pageSize = data.subdata(in: (ss + 4)..<(ss + 6)).withUnsafeBytes { UInt16(littleEndian: $0.load(as: UInt16.self)) }
-            let pointerFormat = data.subdata(in: (ss + 6)..<(ss + 8)).withUnsafeBytes { UInt16(littleEndian: $0.load(as: UInt16.self)) }
-            let segOffset = data.subdata(in: (ss + 8)..<(ss + 16)).withUnsafeBytes { UInt64(littleEndian: $0.load(as: UInt64.self)) }
-            let pageCount = data.subdata(in: (ss + 20)..<(ss + 22)).withUnsafeBytes { UInt16(littleEndian: $0.load(as: UInt16.self)) }
+            let pageSize = readU16(data, ss + 4)
+            let pointerFormat = readU16(data, ss + 6)
+            let segOffset = readU64(data, ss + 8)
+            let pageCount = Int(readU16(data, ss + 20))
 
-            img.pointerFormat = img.pointerFormat != 0 ? img.pointerFormat : pointerFormat
-            var cs = MachOChainedStarts(segIndex: Int(segIdx), pageSize: pageSize,
+            if img.pointerFormat == 0 { img.pointerFormat = pointerFormat }
+            var cs = MachOChainedStarts(segIndex: segIdx, pageSize: pageSize,
                                         pointerFormat: pointerFormat, segmentOffset: segOffset)
             for p in 0..<pageCount {
-                cs.pageStarts.append(data.subdata(in: (ss + 22 + Int(p) * 2)..<(ss + 24 + Int(p) * 2))
-                    .withUnsafeBytes { UInt16(littleEndian: $0.load(as: UInt16.self)) })
+                cs.pageStarts.append(readU16(data, ss + 22 + p * 2))
             }
             img.chainedStarts.append(cs)
         }

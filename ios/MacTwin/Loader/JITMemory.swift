@@ -31,7 +31,7 @@ final class JITMapping {
     let pointer: UnsafeMutableRawPointer
     let size: Int
     let strategy: JITStrategy
-    private(set) var isExecutable: Bool
+    var isExecutable: Bool
 
     init(pointer: UnsafeMutableRawPointer, size: Int, strategy: JITStrategy, executable: Bool) {
         self.pointer = pointer
