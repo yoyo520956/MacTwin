@@ -199,9 +199,10 @@ final class Loader {
                 let addend = Int((raw >> 24) & 0xFF)
                 guard ordinal < imports.count else { return (0, next) }
                 let imp = imports[ordinal]
-                let sym = binder.resolve(imp.name)
-                let target = UInt64(UInt(bitPattern: sym)) &+ UInt64(bitPattern: Int64(addend + imp.addend))
-                return (target, next)
+                guard let sym = binder.resolve(imp.name) else { return (0, next) }
+                let symAddr = UInt64(UInt(bitPattern: sym))
+                let delta = Int64(addend + imp.addend)
+                return (symAddr &+ UInt64(bitPattern: delta), next)
             } else {
                 let target = raw & 0xFFFFFFFFFF          // 36 位
                 if format == MachOConstants.ptr64Offset {
@@ -221,7 +222,7 @@ final class Loader {
                 let ordinal = Int(raw & 0xFFFF)
                 guard ordinal < imports.count else { return (0, next) }
                 let imp = imports[ordinal]
-                let sym = binder.resolve(imp.name)
+                guard let sym = binder.resolve(imp.name) else { return (0, next) }
                 return (UInt64(UInt(bitPattern: sym)), next)
             } else {
                 let target = raw & 0xFFFFFFFF

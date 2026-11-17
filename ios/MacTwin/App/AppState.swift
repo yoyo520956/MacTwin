@@ -84,8 +84,9 @@ final class AppState: ObservableObject {
             var isDir: ObjCBool = false
             fm.fileExists(atPath: url.path, isDirectory: &isDir)
             if isDir.boolValue { continue }   // .app 目录暂不列（P5）
-            let size = (try? fm.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
-            var item = BinaryItem(id: name, name: name, url: url, size: size ?? 0)
+            let attrs = try? fm.attributesOfItem(atPath: url.path)
+            let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+            var item = BinaryItem(id: name, name: name, url: url, size: size)
             inspect(&item)
             list.append(item)
         }
@@ -105,8 +106,9 @@ final class AppState: ObservableObject {
 
             // 粗估缺口：只看符号名是否能被 dlsym 命中
             var miss = 0
+            let rtld = UnsafeMutableRawPointer(bitPattern: -2)
             for imp in img.imports where ShimTable.lookup(imp.name) == nil {
-                if dlsym(UnsafeMutableRawPointer(bitPattern: -2), imp.name) == nil { miss += 1 }
+                if let r = rtld, dlsym(r, imp.name) == nil { miss += 1 }
             }
             item.gapRatio = img.imports.isEmpty ? 0 : Double(miss) / Double(img.imports.count) * 100
             item.parseError = nil
