@@ -1,0 +1,20 @@
+# 测试样本在 CI 里现下载，不入库（VS Code 单个就 370MB）
+fixtures/*.zip
+fixtures/*.tar.gz
+fixtures/*.whl
+fixtures/orjson_x/
+fixtures/orjsonwork/
+fixtures/jqwork/
+fixtures/work/
+fixtures/vsc/
+fixtures/jq/
+fixtures/orjson/
+fixtures/reports/
+fixtures/orjson.orig
+# 提取出的样本本体
+fixtures/*_macos
+fixtures/*_Code
+fixtures/*_electron_fw
+fixtures/*_arm64.so
+*.whl
+/*.tar.gz
