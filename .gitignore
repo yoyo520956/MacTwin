@@ -18,3 +18,4 @@ fixtures/*_electron_fw
 fixtures/*_arm64.so
 *.whl
 /*.tar.gz
+ios/MacTwin/Resources/hello-macos

@@ -23,6 +23,20 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
+      - name: 编译内置 demo（arm64 macOS 二进制）
+        run: |
+          # 这个 demo 是「Mac 程序在 iPhone 上跑」的第一个可执行证明
+          # 目标：arm64 macOS，只链 libSystem，加载器 100% 能跑
+          xcrun clang -target arm64-apple-macos13 \
+            -Wl,-rpath,/usr/lib \
+            -o ios/MacTwin/Resources/hello-macos \
+            fixtures/hello_macos.c
+          chmod +x ios/MacTwin/Resources/hello-macos
+          # 验证：应该是 arm64 Mach-O 可执行文件
+          file ios/MacTwin/Resources/hello-macos
+          lipo -info ios/MacTwin/Resources/hello-macos
+          ls -la ios/MacTwin/Resources/hello-macos
+
       - name: Install xcodegen
         run: |
           if ! command -v xcodegen >/dev/null 2>&1; then
