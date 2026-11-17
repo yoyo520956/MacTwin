@@ -14,6 +14,9 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <time.h>
 
 // ── 与 Swift 共享的状态 ──
 static volatile int32_t g_exit_code = 0;
@@ -139,4 +142,65 @@ void *mactwin_shim_lookup(const char *name) {
     if (!strcmp(name, "NSApplicationMain")) return (void *)mactwin_shim_NSApplicationMain;
 
     return NULL;
+}
+// ── 崩溃守护（全 C，异步信号安全）──
+static char *g_crash_path = NULL;
+static volatile int g_crash_kind_code = 0;
+
+static void crash_handler(int sig) {
+    // 只用 async-signal-safe 函数：open/write/close/strncpy
+    char buf[512];
+    const char *name = "SIG???";
+    switch (sig) {
+        case SIGSEGV: name = "SIGSEGV"; break;
+        case SIGBUS:  name = "SIGBUS";  break;
+        case SIGFPE:  name = "SIGFPE";  break;
+        case SIGILL:  name = "SIGILL";  break;
+        default: break;
+    }
+    time_t t = time(NULL);
+    int n = snprintf(buf, sizeof(buf),
+                     "%s at %lld | exit_code=%d exit_called=%d\n",
+                     name, (long long)t, g_exit_code, g_exit_called);
+    if (n > 0 && g_crash_path) {
+        int fd = open(g_crash_path, O_WRONLY | O_CREAT | O_APPEND, 0o644);
+        if (fd >= 0) {
+            (void)!write(fd, buf, (size_t)n);
+            close(fd);
+        }
+    }
+    // 让默认处理接管（终止进程），但日志已留下
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+// Swift 侧安装
+void mactwin_install_crash_guard(const char *logPath) {
+    if (g_crash_path) free(g_crash_path);
+    g_crash_path = logPath ? strdup(logPath) : NULL;
+    if (logPath) {
+        signal(SIGSEGV, crash_handler);
+        signal(SIGBUS,  crash_handler);
+        signal(SIGFPE,  crash_handler);
+        signal(SIGILL,  crash_handler);
+    }
+}
+
+// 最近一次崩溃日志（Swift 读）
+int mactwin_read_crash(char *buf, int bufsize) {
+    if (!g_crash_path || !buf || bufsize <= 0) return 0;
+    int fd = open(g_crash_path, O_RDONLY, 0);
+    if (fd < 0) return 0;
+    int n = read(fd, buf, (size_t)(bufsize - 1));
+    close(fd);
+    if (n < 0) n = 0;
+    buf[n] = '\0';
+    return n;
+}
+
+void mactwin_clear_crash(void) {
+    if (g_crash_path) {
+        int fd = open(g_crash_path, O_WRONLY | O_CREAT | O_TRUNC, 0o644);
+        if (fd >= 0) close(fd);
+    }
 }

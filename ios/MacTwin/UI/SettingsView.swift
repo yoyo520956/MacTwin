@@ -5,6 +5,12 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
+    @State private var crashTick = 0
+
+    func needRefresh() {
+        _ = crashTick   // 触发视图重建
+        CrashGuard.shared.clear()
+    }
 
     var body: some View {
         NavigationStack {
@@ -37,6 +43,33 @@ struct SettingsView: View {
                     step(1, "导入", "点「库」右上角 +，选择一个 arm64 的 macOS 二进制。\n从 .app 里取的是 Contents/MacOS/ 下的那个文件。")
                     step(2, "确认可跑", "详情页会显示架构、导入符号数、估算缺口。缺口越小越可能跑起来。")
                     step(3, "运行", "点「运行」，输出会实时出现在「运行」页。")
+                }
+
+                Section("崩溃日志") {
+                    if let log = CrashGuard.shared.lastCrash() {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(log)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.red)
+                                .textSelection(.enabled)
+                            Button {
+                                CrashGuard.shared.clear()
+                                self.needRefresh()
+                            } label: {
+                                Label("清除日志", systemImage: "trash")
+                                    .font(.caption)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    } else {
+                        HStack {
+                            Text("暂无崩溃记录")
+                                .font(.subheadline)
+                            Spacer()
+                        }
+                    }
+                } footer: {
+                    Text("如果你运行某个程序时 MacTwin 崩了，这里会留下线索。把这段文本发给我有助于定位。")
                 }
 
                 Section("关于") {
