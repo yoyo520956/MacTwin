@@ -70,9 +70,14 @@ final class SymbolBinder {
         }
 
         // ② iOS 系统符号直通
-        if let rtld = SymbolBinder.rtldDefault, let sym = dlsym(rtld, name) {
-            report.direct += 1
-            return sym
+        // 两种写法都试：C 函数叫 printf，ObjC 类叫 _OBJC_CLASS_$_NSView
+        if let rtld = SymbolBinder.rtldDefault {
+            var sym = dlsym(rtld, name)
+            if sym == nil { sym = dlsym(rtld, "_" + name) }
+            if let sym = sym {
+                report.direct += 1
+                return sym
+            }
         }
 
         // ③ 已加载镜像导出

@@ -37,6 +37,16 @@ jobs:
           lipo -info ios/MacTwin/Resources/hello-macos
           ls -la ios/MacTwin/Resources/hello-macos
 
+          # GUI demo：真 AppKit 程序，验证「能看到窗口」
+          xcrun clang -target arm64-apple-macos13 \
+            -framework Cocoa \
+            -o ios/MacTwin/Resources/hello-gui \
+            fixtures/hello_gui_macos.m
+          chmod +x ios/MacTwin/Resources/hello-gui
+          file ios/MacTwin/Resources/hello-gui
+          echo "=== hello-gui 的 AppKit 导入（应能看到 NSWindow/NSView）==="
+          otool -L ios/MacTwin/Resources/hello-gui 2>/dev/null | head -8
+
       - name: Install xcodegen
         run: |
           if ! command -v xcodegen >/dev/null 2>&1; then
@@ -80,14 +90,15 @@ jobs:
           APP="$RUNNER_TEMP/MacTwin.xcarchive/Products/Applications/MacTwin.app"
           if [ ! -d "$APP" ]; then echo "::error::找不到 MacTwin.app"; ls -R "$RUNNER_TEMP/MacTwin.xcarchive" | head -40; exit 1; fi
           # 注入内置 demo（Mach-O 不会自动作为资源打包）
-          if [ -f "ios/MacTwin/Resources/hello-macos" ]; then
-            cp "ios/MacTwin/Resources/hello-macos" "$APP/hello-macos"
-            chmod +x "$APP/hello-macos"
-            echo "已注入 hello-macos 到 $APP"
-            file "$APP/hello-macos"
-          else
-            echo "::warning::内置 demo 缺失（编译步骤可能失败）"
-          fi
+          for demo in hello-macos hello-gui; do
+            if [ -f "ios/MacTwin/Resources/$demo" ]; then
+              cp "ios/MacTwin/Resources/$demo" "$APP/$demo"
+              chmod +x "$APP/$demo"
+              echo "已注入 $demo（$(stat -f%z "ios/MacTwin/Resources/$demo") 字节）"
+            else
+              echo "::warning::内置 demo $demo 缺失"
+            fi
+          done
           mkdir -p "$RUNNER_TEMP/Payload"
           cp -R "$APP" "$RUNNER_TEMP/Payload/"
           cd "$RUNNER_TEMP"

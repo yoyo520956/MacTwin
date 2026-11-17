@@ -60,23 +60,29 @@ final class AppState: ObservableObject {
     /// 首次启动把打包进 IPA 的内置 demo 复制进库
     func seedBuiltInDemo() {
         let fm = FileManager.default
-        let dest = binariesURL.appendingPathComponent("hello-macos")
-        guard !fm.fileExists(atPath: dest.path) else { return }
-        // 内置 demo 的资源名（CI 编译后打进 bundle）
-        let resourceName = "hello-macos"
-        var source = Bundle.main.url(forResource: resourceName, withExtension: nil)
-        if source == nil {
-            source = Bundle.main.resourceURL?.appendingPathComponent(resourceName)
+        var seeded: [String] = []
+        var failed: [String] = []
+
+        for name in ["hello-macos", "hello-gui"] {
+            let dest = binariesURL.appendingPathComponent(name)
+            guard !fm.fileExists(atPath: dest.path) else { continue }
+            var source = Bundle.main.url(forResource: name, withExtension: nil)
+            if source == nil {
+                source = Bundle.main.resourceURL?.appendingPathComponent(name)
+            }
+            guard let url = source else { continue }
+            do {
+                try fm.copyItem(at: url, to: dest)
+                seeded.append(name)
+            } catch {
+                failed.append(name)
+            }
         }
-        guard let url = source else {
-            statusLine = "内置 demo 未随包提供，请手动导入 arm64 macOS 二进制"
-            return
-        }
-        do {
-            try fm.copyItem(at: url, to: dest)
-            statusLine = "已就绪：内置 demo「hello-macos」"
-        } catch {
-            statusLine = "内置 demo 导出失败：\(error.localizedDescription)"
+
+        if !seeded.isEmpty {
+            statusLine = "已就绪内置 demo：\(seeded.joined(separator: "、"))"
+        } else if !failed.isEmpty {
+            statusLine = "内置 demo 导出失败：\(failed.joined(separator: "、"))"
         }
     }
 
