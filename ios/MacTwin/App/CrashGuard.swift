@@ -43,10 +43,13 @@ final class CrashGuard {
         ]
         var data = Data()
         for l in lines {
-            if let d = l.data(using: .utf8) { data.append(d) ; data.append(0xA) }
+            if let d = l.data(using: .utf8) { data.append(d); data.append(0xA) }
         }
-        // 用 write(2) 写（异步信号安全）
-        let fd = open(logURL.path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+        // 用 write(2) 写（异步信号安全）。open flags 用数值常量避开命名空间坑：
+        // O_WRONLY | O_CREAT | O_TRUNC = 0o1 | 0o2 | 0o4
+        let oflag: Int32 = 0o1 | 0o2 | 0o4
+        let mode: Int32 = 0o644
+        let fd = open(logURL.path, oflag, mode)
         if fd >= 0 {
             data.withUnsafeBytes { buf in
                 _ = write(fd, buf.baseAddress, buf.count)
