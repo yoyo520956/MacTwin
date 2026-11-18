@@ -168,7 +168,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
 - (void)setTitle:(NSString *)t;
 - (void)setFrame:(CGRect)fr;
 - (void)close;
-- (NSRect)contentRectForWindowRect:(NSRect)wr;
+- (CGRect)contentRectForWindowRect:(CGRect)wr;
 @end
 
 @implementation NSWindow {
@@ -223,7 +223,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
         for (UIView *v in [_uiWindow.rootViewController.view subviews]) { [v removeFromSuperview]; }
     });
 }
-- (NSRect)contentRectForWindowRect:(NSRect)wr { return wr; }
+- (CGRect)contentRectForWindowRect:(CGRect)wr { return wr; }
 @end
 
 // ----------------------------------------------------------------
