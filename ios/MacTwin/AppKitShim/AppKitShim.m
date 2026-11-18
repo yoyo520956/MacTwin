@@ -10,6 +10,9 @@
 #import <objc/message.h>
 #import <CoreGraphics/CoreGraphics.h>
 
+//  Forward declarations
+@class NSView, NSWindow;
+
 //  Associated-object keys
 static const void *kMTNSViewKey   = &kMTNSViewKey;
 static const void *kMTWindowKey   = &kMTWindowKey;
@@ -96,6 +99,9 @@ static const void *kMTWindowKey   = &kMTWindowKey;
 
 @implementation NSView {
     NSColor *_bg;
+    CGFloat _alphaValue;
+    BOOL _hidden;
+    BOOL _wantsLayer;
 }
 
 - (instancetype)initWithFrame:(CGRect)fr {
@@ -103,8 +109,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
     if (self) {
         _host = [[MTViewHost alloc] initWithFrame:fr];
         _host.nsView = self;
-        _host.layer.isGeometryFlipped = YES;
-        objc_setAssociatedObject(_host, kMTNSViewKey, self, OBJC_ASSOCIATION_ASSIGN);
+                objc_setAssociatedObject(_host, kMTNSViewKey, self, OBJC_ASSOCIATION_ASSIGN);
         _alphaValue = 1.0;
         _hidden = NO;
         _wantsLayer = NO;
@@ -196,7 +201,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
 - (NSString *)title { return _title; }
 - (void)setTitle:(NSString *)t {
     _title = t;
-    dispatch_async(dispatch_get_main_queue(), ^{ _uiWindow.title = t; });
+    objc_setAssociatedObject(_uiWindow, @"mactwin_title", t, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 - (NSView *)contentView { return _contentView; }
@@ -215,7 +220,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
 - (void)close {
     dispatch_async(dispatch_get_main_queue(), ^{
         _uiWindow.hidden = YES;
-        _uiWindow.rootViewController.view.subviews = [NSMutableArray array];
+        for (UIView *v in [_uiWindow.rootViewController.view subviews]) { [v removeFromSuperview]; }
     });
 }
 - (NSRect)contentRectForWindowRect:(NSRect)wr { return wr; }
@@ -326,7 +331,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
         _label = [[UILabel alloc] initWithFrame:CGRectZero];
         _label.numberOfLines = 0;
         _label.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [_host addSubview:_label];
+        [self.host addSubview:_label];
         [self setBackgroundColor:[NSColor clearColor]];
     }
     return self;
@@ -346,7 +351,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
 - (void)setBordered:(BOOL)b { _bordered = b; }
 - (void)layout {
     [super layout];
-    _label.frame = _host.bounds;
+    _label.frame = self.host.bounds;
 }
 @end
 
@@ -370,7 +375,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
     if (self) {
         _btn = [[UIButton alloc] initWithFrame:CGRectZero];
         _btn.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [_host addSubview:_btn];
+        [self.host addSubview:_btn];
     }
     return self;
 }
@@ -384,7 +389,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
 }
 - (void)layout {
     [super layout];
-    _btn.frame = _host.bounds;
+    _btn.frame = self.host.bounds;
 }
 @end
 
