@@ -20,7 +20,7 @@ final class CrashGuard {
     /// 上次崩溃信息（若有）
     func lastCrash() -> String? {
         var buf = [CChar](repeating: 0, count: 512)
-        let n = mactwin_read_crash(&buf, buf.count)
+        let n = mactwin_read_crash(&buf, Int32(buf.count))
         guard n > 0 else { return nil }
         return String(cString: buf)
     }

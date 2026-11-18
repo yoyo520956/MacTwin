@@ -45,31 +45,28 @@ struct SettingsView: View {
                     step(3, "运行", "点「运行」，输出会实时出现在「运行」页。")
                 }
 
-                Section("崩溃日志") {
+                                Section {
                     if let log = CrashGuard.shared.lastCrash() {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(log)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.red)
-                                .textSelection(.enabled)
-                            Button {
-                                CrashGuard.shared.clear()
-                                self.needRefresh()
-                            } label: {
-                                Label("清除日志", systemImage: "trash")
-                                    .font(.caption)
-                            }
+                        Text(log)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.red)
+                            .textSelection(.enabled)
+                        Button {
+                            CrashGuard.shared.clear()
+                            self.needRefresh()
+                        } label: {
+                            Label("清除日志", systemImage: "trash")
+                                .font(.caption)
                         }
-                        .padding(.vertical, 4)
                     } else {
-                        HStack {
-                            Text("暂无崩溃记录")
-                                .font(.subheadline)
-                            Spacer()
-                        }
+                        Text("暂无崩溃记录")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
+                } header: {
+                    Text("崩溃日志")
                 } footer: {
-                    Text("如果你运行某个程序时 MacTwin 崩了，这里会留下线索。把这段文本发给我有助于定位。")
+                    Text("如果 MacTwin 崩了，这里会留下线索。把这段发给开发有助定位。")
                 }
 
                 Section("关于") {
