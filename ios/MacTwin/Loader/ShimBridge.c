@@ -163,7 +163,7 @@ static void crash_handler(int sig) {
                      "%s at %lld | exit_code=%d exit_called=%d\n",
                      name, (long long)t, g_exit_code, g_exit_called);
     if (n > 0 && g_crash_path) {
-        int fd = open(g_crash_path, O_WRONLY | O_CREAT | O_APPEND, 0o644);
+        int fd = open(g_crash_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
         if (fd >= 0) {
             (void)!write(fd, buf, (size_t)n);
             close(fd);
@@ -200,7 +200,7 @@ int mactwin_read_crash(char *buf, int bufsize) {
 
 void mactwin_clear_crash(void) {
     if (g_crash_path) {
-        int fd = open(g_crash_path, O_WRONLY | O_CREAT | O_TRUNC, 0o644);
+        int fd = open(g_crash_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (fd >= 0) close(fd);
     }
 }
