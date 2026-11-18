@@ -1,39 +1,34 @@
 //  AppKitShim.m
-//  MacTwin — 最小 AppKit 兼容层
+//  MacTwin -- minimal AppKit-to-UIKit bridge layer
 //
-//  为什么只需要 AppKit: 
-//    Foundation(NSString/NSArray/NSData/NSURL…) 在 iOS 上本来就有, 
-//    CoreGraphics / CoreText / CoreAnimation / Metal 也都有. 
-//    真正缺的只有 AppKit —— 这一层把它映射到 UIKit. 
-//
-//  坐标: AppKit 原点在左下, UIKit 在左上 → 根视图统一翻 Y 轴. 
+//  Foundation / CoreGraphics / CoreAnimation already exist on iOS.
+//  Only AppKit classes need shimming: NSView, NSWindow, NSApplication.
 
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <CoreGraphics/CoreGraphics.h>
 
-#pragma mark - 运行时桥
-
-// NSView ↔ UIView 的对应表(用关联对象反向查)
-static const void *kMTUIViewKey   = &kMTUIViewKey;
+//  Associated-object keys
 static const void *kMTNSViewKey   = &kMTNSViewKey;
 static const void *kMTWindowKey   = &kMTWindowKey;
 
-#pragma mark - NSResponder
+// ----------------------------------------------------------------
+#pragma mark - NSResponder (base class)
 
 @interface NSResponder : NSObject
-@property (nonatomic, weak) NSResponder *nextResponder;
 @end
-
 @implementation NSResponder
 @end
 
-#pragma mark - NSColor(先声明, NSView 要用)
+// ----------------------------------------------------------------
+#pragma mark - NSColor
 
 @interface NSColor : NSObject
 @property (nonatomic, readonly) CGFloat red, green, blue, alpha;
-+ (NSColor *)colorWithCalibratedRed:(CGFloat)r green:(CGFloat)g blue:(CGFloat)b alpha:(CGFloat)a;
 + (NSColor *)colorWithRed:(CGFloat)r green:(CGFloat)g blue:(CGFloat)b alpha:(CGFloat)a;
++ (NSColor *)colorWithCalibratedRed:(CGFloat)r green:(CGFloat)g blue:(CGFloat)b alpha:(CGFloat)a;
 + (NSColor *)blackColor;
 + (NSColor *)whiteColor;
 + (NSColor *)clearColor;
@@ -44,32 +39,27 @@ static const void *kMTWindowKey   = &kMTWindowKey;
 @implementation NSColor {
     CGFloat _r, _g, _b, _a;
 }
-@synthesize red = _r, green = _g, blue = _b, alpha = _a;
-
-+ (NSColor *)colorWithCalibratedRed:(CGFloat)r green:(CGFloat)g blue:(CGFloat)b alpha:(CGFloat)a {
++ (NSColor *)colorWithRed:(CGFloat)r green:(CGFloat)g blue:(CGFloat)b alpha:(CGFloat)a {
     NSColor *c = [NSColor new];
-    c->_r = r; c->_g = g; c->_b = b; c->_a = a;
+    c->_r=r; c->_g=g; c->_b=b; c->_a=a;
     return c;
 }
-+ (NSColor *)colorWithRed:(CGFloat)r green:(CGFloat)g blue:(CGFloat)b alpha:(CGFloat)a {
-    return [self colorWithCalibratedRed:r green:g blue:b alpha:a];
++ (NSColor *)colorWithCalibratedRed:(CGFloat)r green:(CGFloat)g blue:(CGFloat)b alpha:(CGFloat)a {
+    return [self colorWithRed:r green:g blue:b alpha:a];
 }
-+ (NSColor *)blackColor  { return [self colorWithCalibratedRed:0 green:0 blue:0 alpha:1]; }
-+ (NSColor *)whiteColor  { return [self colorWithCalibratedRed:1 green:1 blue:1 alpha:1]; }
-+ (NSColor *)clearColor  { return [self colorWithCalibratedRed:0 green:0 blue:0 alpha:0]; }
-+ (NSColor *)windowBackgroundColor {
-    return [self colorWithCalibratedRed:0.93 green:0.93 blue:0.93 alpha:1];
-}
++ (NSColor *)blackColor           { return [self colorWithRed:0 green:0 blue:0 alpha:1]; }
++ (NSColor *)whiteColor           { return [self colorWithRed:1 green:1 blue:1 alpha:1]; }
++ (NSColor *)clearColor           { return [self colorWithRed:0 green:0 blue:0 alpha:0]; }
++ (NSColor *)windowBackgroundColor{ return [self colorWithRed:0.93 green:0.93 blue:0.93 alpha:1]; }
 - (UIColor *)mt_uiColor {
     return [UIColor colorWithRed:_r green:_g blue:_b alpha:_a];
 }
 @end
 
-#pragma mark - NSView
+// ----------------------------------------------------------------
+#pragma mark - NSView  (UIView-backed)
 
-@class NSView, NSWindow;
-
-// UIKit 宿主: 把 drawRect: 转发给 NSView, 并翻转坐标
+// The host UIView that draws
 @interface MTViewHost : UIView
 @property (nonatomic, weak) NSView *nsView;
 @end
@@ -77,270 +67,175 @@ static const void *kMTWindowKey   = &kMTWindowKey;
 @interface NSView : NSResponder
 @property (nonatomic, strong) MTViewHost *host;
 @property (nonatomic, weak) NSView *superview;
-@property (nonatomic, copy) NSArray<NSView *> *subviews;
 @property (nonatomic, assign) CGRect frame;
 @property (nonatomic, assign) CGRect bounds;
-@property (nonatomic, strong) NSColor *backgroundColor;
 @property (nonatomic, assign) CGFloat alphaValue;
 @property (nonatomic, assign) BOOL hidden;
 @property (nonatomic, assign) BOOL wantsLayer;
 @property (nonatomic, assign) NSInteger tag;
 @property (nonatomic, readonly) CALayer *layer;
-@property (nonatomic, readonly) NSWindow *window;
-@property (nonatomic, assign) BOOL autoresizesSubviews;
 
-- (instancetype)initWithFrame:(NSRect)frameRect;
+- (instancetype)initWithFrame:(CGRect)fr;
 - (instancetype)init;
-- (void)addSubview:(NSView *)view;
+- (void)addSubview:(NSView *)v;
 - (void)removeFromSuperview;
 - (void)setNeedsDisplay:(BOOL)flag;
-- (void)setNeedsDisplayInRect:(NSRect)r;
-- (void)drawRect:(NSRect)dirtyRect;
+- (void)setNeedsDisplayInRect:(CGRect)r;
+- (void)drawRect:(CGRect)r;
 - (void)layout;
-- (void)layoutSubtreeIfNeeded;
-- (NSPoint)convertPoint:(NSPoint)p fromView:(NSView *)v;
-- (NSPoint)convertPoint:(NSPoint)p toView:(NSView *)v;
-- (BOOL)isFlipped;
+- (void)setBackgroundColor:(NSColor *)c;
+- (NSColor *)backgroundColor;
 @end
 
 @implementation MTViewHost
 - (void)drawRect:(CGRect)rect {
     NSView *v = self.nsView;
-    if (v) {
-        @try { [v drawRect:rect]; } @catch (NSException *e) { /* 不让绘图异常杀掉 App */ }
-    }
+    if (v) [v drawRect:rect];
 }
 @end
 
 @implementation NSView {
-    NSColor *_bgColor;
+    NSColor *_bg;
 }
 
-- (instancetype)initWithFrame:(NSRect)frameRect {
+- (instancetype)initWithFrame:(CGRect)fr {
     self = [super init];
     if (self) {
-        _host = [[MTViewHost alloc] initWithFrame:frameRect];
+        _host = [[MTViewHost alloc] initWithFrame:fr];
         _host.nsView = self;
-        _host.layer.isGeometryFlipped = YES;   // AppKit 坐标: 原点左下
+        _host.layer.isGeometryFlipped = YES;
         objc_setAssociatedObject(_host, kMTNSViewKey, self, OBJC_ASSOCIATION_ASSIGN);
         _alphaValue = 1.0;
-        _autoresizesSubviews = YES;
+        _hidden = NO;
+        _wantsLayer = NO;
     }
     return self;
 }
 
-- (instancetype)init { return [self initWithFrame:CGRectZero]; }
+- (instancetype)init {
+    return [self initWithFrame:CGRectZero];
+}
 
 - (CGRect)frame { return _host.frame; }
 - (void)setFrame:(CGRect)f { _host.frame = f; }
-
 - (CGRect)bounds { return _host.bounds; }
 - (void)setBounds:(CGRect)b { _host.bounds = b; }
-
-- (NSColor *)backgroundColor { return _bgColor; }
-- (void)setBackgroundColor:(NSColor *)c {
-    _bgColor = c;
-    _host.backgroundColor = c ? [c mt_uiColor] : [UIColor clearColor];
-}
-
-- (CGFloat)alphaValue { return _host.alpha; }
-- (void)setAlphaValue:(CGFloat)a { _host.alpha = a; }
-
-- (BOOL)hidden { return _host.hidden; }
-- (void)setHidden:(BOOL)h { _host.hidden = h; }
-
-- (BOOL)wantsLayer { return _host.layer != nil; }
-- (void)setWantsLayer:(BOOL)w { /* UIView 天然有 layer */ }
-
+- (CGFloat)alphaValue { return _alphaValue; }
+- (void)setAlphaValue:(CGFloat)a { _alphaValue = a; _host.alpha = a; }
+- (BOOL)hidden { return _hidden; }
+- (void)setHidden:(BOOL)h { _hidden = h; _host.hidden = h; }
+- (BOOL)wantsLayer { return _wantsLayer; }
+- (void)setWantsLayer:(BOOL)w { _wantsLayer = w; }
 - (NSInteger)tag { return _host.tag; }
 - (void)setTag:(NSInteger)t { _host.tag = t; }
-
 - (CALayer *)layer { return _host.layer; }
-
-- (NSWindow *)window {
-    UIWindow *w = _host.window;
-    return w ? objc_getAssociatedObject(w, kMTWindowKey) : nil;
-}
-
-- (NSView *)superview {
-    UIView *sv = _host.superview;
-    return sv ? objc_getAssociatedObject(sv, kMTNSViewKey) : nil;
-}
-
-- (NSArray<NSView *> *)subviews {
-    NSMutableArray *arr = [NSMutableArray array];
-    for (UIView *uv in _host.subviews) {
-        id v = objc_getAssociatedObject(uv, kMTNSViewKey);
-        if (v) [arr addObject:v];
-    }
-    return arr;
-}
-- (void)setSubviews:(NSArray<NSView *> *)v { /* 只读语义, 忽略 */ }
-
-- (void)addSubview:(NSView *)view {
-    if (!view || !view.host) return;
-    [_host addSubview:view.host];
-}
-
-- (void)removeFromSuperview { [_host removeFromSuperview]; }
-
 - (void)setNeedsDisplay:(BOOL)flag { [_host setNeedsDisplay]; }
-- (void)setNeedsDisplayInRect:(NSRect)r { [_host setNeedsDisplay]; }
+- (void)setNeedsDisplayInRect:(CGRect)r { [_host setNeedsDisplayInRect:r]; }
+- (void)drawRect:(CGRect)r { /* override by subclass */ }
+- (void)layout { [_host layoutIfNeeded]; }
+- (NSColor *)backgroundColor { return _bg; }
+- (void)setBackgroundColor:(NSColor *)c { _bg = c; _host.backgroundColor = c ? [c mt_uiColor] : [UIColor clearColor]; }
 
-- (void)drawRect:(NSRect)dirtyRect { /* 子类覆盖 */ }
-- (void)layout { /* 子类覆盖 */ }
-- (void)layoutSubtreeIfNeeded { [_host layoutIfNeeded]; }
-
-- (BOOL)isFlipped { return YES; }
-
-- (NSPoint)convertPoint:(NSPoint)p fromView:(NSView *)v { return p; }
-- (NSPoint)convertPoint:(NSPoint)p toView:(NSView *)v { return p; }
-
+- (void)addSubview:(NSView *)v {
+    if (v && v.host) {
+        [_host addSubview:v.host];
+        v.superview = self;
+    }
+}
+- (void)removeFromSuperview {
+    [_host removeFromSuperview];
+    self.superview = nil;
+}
 @end
 
-#pragma mark - NSWindow
+// ----------------------------------------------------------------
+#pragma mark - NSWindow  (UIWindow-backed)
 
-typedef NS_OPTIONS(NSUInteger, NSWindowStyleMask) {
-    NSWindowStyleMaskBorderless     = 0,
-    NSWindowStyleMaskTitled         = 1 << 0,
-    NSWindowStyleMaskClosable       = 1 << 1,
-    NSWindowStyleMaskMiniaturizable = 1 << 2,
-    NSWindowStyleMaskResizable      = 1 << 3,
-};
-
-@class NSView;
-
-@interface NSWindow : NSResponder
+@interface NSWindow : NSObject
+@property (nonatomic, copy) NSString *title;
 @property (nonatomic, strong) NSView *contentView;
-@property (nonatomic, copy)   NSString *title;
-@property (nonatomic, assign) CGRect frame;
-@property (nonatomic, assign) BOOL isVisible;
-@property (nonatomic, readonly) BOOL isKeyWindow;
-@property (nonatomic, weak) id delegate;
-@property (nonatomic, strong) id<UIWindowSceneDelegate> sceneDelegate;
 
-- (instancetype)initWithContentRect:(CGRect)rect
-                          styleMask:(NSWindowStyleMask)mask
-                            backing:(NSUInteger)backing
-                              defer:(BOOL)flag;
+- (instancetype)initWithContentRect:(CGRect)cr
+                          styleMask:(NSUInteger)sm
+                            backing:(NSUInteger)bk
+                              defer:(BOOL)df;
 - (void)makeKeyAndOrderFront:(id)sender;
-- (void)orderFront:(id)sender;
-- (void)orderOut:(id)sender;
-- (void)center;
+- (void)setTitle:(NSString *)t;
+- (void)setFrame:(CGRect)fr;
 - (void)close;
-- (void)setContentSize:(CGSize)size;
+- (NSRect)contentRectForWindowRect:(NSRect)wr;
 @end
 
 @implementation NSWindow {
-    NSString *_title;
     UIWindow *_uiWindow;
-    NSView   *_contentViewShadow;
-    BOOL      _visible;
+    NSString *_title;
+    NSView *_contentView;
 }
 
-- (instancetype)initWithContentRect:(CGRect)rect
-                          styleMask:(NSWindowStyleMask)mask
-                            backing:(NSUInteger)backing
-                              defer:(BOOL)flag {
+- (instancetype)initWithContentRect:(CGRect)cr
+                          styleMask:(NSUInteger)sm
+                            backing:(NSUInteger)bk
+                              defer:(BOOL)df {
     self = [super init];
-    if (!self) return nil;
-
-    _uiWindow = [[UIWindow alloc] initWithFrame:rect];
-    _uiWindow.backgroundColor = [UIColor colorWithWhite:0.93 alpha:1];
-    objc_setAssociatedObject(_uiWindow, kMTWindowKey, self, OBJC_ASSOCIATION_ASSIGN);
-
-    NSView *cv = [[NSView alloc] initWithFrame:rect];
-    cv.backgroundColor = [NSColor windowBackgroundColor];
-    _contentViewShadow = cv;
-    objc_setAssociatedObject(_uiWindow, kMTNSViewKey, cv, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [_uiWindow addSubview:cv.host];
-
-    // 默认 rootViewController, 否则 iOS 13+ 不显示
-    UIViewController *vc = [UIViewController new];
-    vc.view.backgroundColor = _uiWindow.backgroundColor;
-    [vc.view addSubview:cv.host];
-    _uiWindow.rootViewController = vc;
-
-    _frame = rect;
+    if (self) {
+        CGRect safe = [UIScreen mainScreen].bounds;
+        CGRect winFrame = CGRectMake(0, 0, cr.size.width, cr.size.height);
+        _uiWindow = [[UIWindow alloc] initWithFrame:winFrame];
+        _uiWindow.backgroundColor = [UIColor whiteColor];
+    }
     return self;
 }
 
-- (NSView *)contentView { return _contentViewShadow; }
-- (void)setContentView:(NSView *)v {
-    if (!v) return;
-    [_contentViewShadow.host removeFromSuperview];
-    _contentViewShadow = v;
-    [_uiWindow.rootViewController.view addSubview:v.host];
-    objc_setAssociatedObject(_uiWindow, kMTNSViewKey, v, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-- (NSString *)title { return _title ?: @""; }
-- (void)setTitle:(NSString *)t { _title = [t copy]; }
-
-- (CGRect)frame { return _uiWindow.frame; }
-- (void)setFrame:(CGRect)f { _uiWindow.frame = f; _frame = f; }
-
-- (BOOL)isVisible { return _visible; }
-- (BOOL)isKeyWindow { return _uiWindow.isKeyWindow; }
-
 - (void)makeKeyAndOrderFront:(id)sender {
-    _visible = YES;
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self->_uiWindow makeKeyAndVisible];
+        [_uiWindow makeKeyAndVisible];
+        _uiWindow.hidden = NO;
     });
 }
 
-- (void)orderFront:(id)sender { [self makeKeyAndOrderFront:sender]; }
+- (NSString *)title { return _title; }
+- (void)setTitle:(NSString *)t {
+    _title = t;
+    dispatch_async(dispatch_get_main_queue(), ^{ _uiWindow.title = t; });
+}
 
-- (void)orderOut:(id)sender {
-    _visible = NO;
+- (NSView *)contentView { return _contentView; }
+- (void)setContentView:(NSView *)v {
+    _contentView = v;
+    if (v && v.host) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [_uiWindow.rootViewController.view addSubview:v.host];
+            v.host.frame = _uiWindow.bounds;
+        });
+    }
+}
+- (void)setFrame:(CGRect)f {
+    dispatch_async(dispatch_get_main_queue(), ^{ _uiWindow.frame = f; });
+}
+- (void)close {
     dispatch_async(dispatch_get_main_queue(), ^{
-        self->_uiWindow.hidden = YES;
+        _uiWindow.hidden = YES;
+        _uiWindow.rootViewController.view.subviews = [NSMutableArray array];
     });
 }
-
-- (void)center { /* iOS 全屏, 无需居中 */ }
-
-- (void)close { [self orderOut:nil]; }
-
-- (void)setContentSize:(CGSize)size {
-    CGRect f = _uiWindow.frame;
-    f.size = size;
-    _uiWindow.frame = f;
-    _contentViewShadow.frame = CGRectMake(0, 0, size.width, size.height);
-}
-
+- (NSRect)contentRectForWindowRect:(NSRect)wr { return wr; }
 @end
 
+// ----------------------------------------------------------------
 #pragma mark - NSApplication
 
-@protocol NSApplicationDelegate <NSObject>
-@optional
-- (void)applicationDidFinishLaunching:(NSNotification *)n;
-- (void)applicationWillTerminate:(NSNotification *)n;
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(id)sender;
-@end
-
-@interface NSApplication : NSResponder
-@property (nonatomic, weak) id<NSApplicationDelegate> delegate;
-@property (nonatomic, readonly) NSArray<NSWindow *> *windows;
+@interface NSApplication : NSObject
+@property (nonatomic, weak) id delegate;
 + (NSApplication *)sharedApplication;
 - (void)run;
-- (void)stop:(id)sender;
 - (void)terminate:(id)sender;
-- (void)activateIgnoringOtherApps:(BOOL)flag;
-- (void)setActivationPolicy:(NSInteger)policy;
-- (NSWindow *)mainWindow;
-- (NSWindow *)keyWindow;
-- (void)sendEvent:(id)event;
+- (void)activateIgnoringOtherApps:(BOOL)b;
 @end
 
 @implementation NSApplication {
-    NSMutableArray<NSWindow *> *_windows;
+    UIApplication *_hostApp;
     BOOL _running;
 }
-
-@synthesize delegate = _delegate;
 
 + (NSApplication *)sharedApplication {
     static NSApplication *inst = nil;
@@ -349,227 +244,226 @@ typedef NS_OPTIONS(NSUInteger, NSWindowStyleMask) {
     return inst;
 }
 
-- (instancetype)init {
-    self = [super init];
-    if (self) _windows = [NSMutableArray array];
-    return self;
-}
-
-- (NSArray<NSWindow *> *)windows { return [_windows copy]; }
-- (NSWindow *)mainWindow { return _windows.firstObject; }
-- (NSWindow *)keyWindow { return _windows.firstObject; }
-
 - (void)run {
     _running = YES;
-
-    // 在后台线程被调用: UI 交给主线程, 本线程用 runloop 挂住
     dispatch_async(dispatch_get_main_queue(), ^{
-        id<NSApplicationDelegate> d = self.delegate;
-        if (d && [d respondsToSelector:@selector(applicationDidFinishLaunching:)]) {
-            @try {
-                [d applicationDidFinishLaunching:
-                    [NSNotification notificationWithName:@"NSApplicationDidFinishLaunchingNotification"
-                                                  object:self]];
-            } @catch (NSException *e) {
-                NSLog(@"[MacTwin] applicationDidFinishLaunching 抛异常: %@", e);
-            }
-        }
+        if (self.delegate && [self.delegate respondsToSelector:@selector(applicationDidFinishLaunching:)])
+            [self.delegate applicationDidFinishLaunching:nil];
     });
-
-    // 保持线程存活(runloop 空转, 可被 stop 打断)
-    while (_running) {
-        @autoreleasepool {
-            [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
-                                     beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
-        }
-    }
 }
 
-- (void)stop:(id)sender { _running = NO; }
-- (void)terminate:(id)sender { _running = NO; }
-- (void)activateIgnoringOtherApps:(BOOL)flag { }
-- (void)setActivationPolicy:(NSInteger)policy { }
-- (void)sendEvent:(id)event { }
+- (void)terminate:(id)sender {
+    _running = NO;
+    // don't actually kill the app - just stop
+}
 
+- (void)activateIgnoringOtherApps:(BOOL)b { /* no-op on iOS */ }
 @end
 
-#pragma mark - NSApplicationMain
+// ----------------------------------------------------------------
+#pragma mark - NSApplicationDelegate protocol
 
-// AppKit 程序的入口. macOS 上是 int NSApplicationMain(int, const char **)
-int NSApplicationMain(int argc, const char **argv) {
-    NSApplication *app = [NSApplication sharedApplication];
-    [app run];
-    return 0;
-}
+@protocol NSApplicationDelegate <NSObject>
+@optional
+- (void)applicationDidFinishLaunching:(NSNotification *)n;
+- (void)applicationWillTerminate:(NSNotification *)n;
+@end
 
-#pragma mark - 绘图函数
-
-void NSRectFill(NSRect rect) {
-    CGContextRef ctx = UIGraphicsGetCurrentContext();
-    if (ctx) CGContextFillRect(ctx, rect);
-}
-
-void NSRectFillUsingOperation(NSRect rect, NSUInteger op) {
-    NSRectFill(rect);
-}
-
-void NSFrameRect(NSRect rect) {
-    CGContextRef ctx = UIGraphicsGetCurrentContext();
-    if (ctx) CGContextStrokeRect(ctx, rect);
-}
-
-NSRect NSMakeRect(CGFloat x, CGFloat y, CGFloat w, CGFloat h) {
-    return CGRectMake(x, y, w, h);
-}
-NSPoint NSMakePoint(CGFloat x, CGFloat y) { return CGPointMake(x, y); }
-NSSize  NSMakeSize(CGFloat w, CGFloat h) { return CGSizeMake(w, h); }
-
+// ----------------------------------------------------------------
 #pragma mark - NSFont
 
 @interface NSFont : NSObject
-@property (nonatomic, assign) CGFloat pointSize;
-@property (nonatomic, assign) BOOL bold;
-+ (NSFont *)systemFontOfSize:(CGFloat)size;
-+ (NSFont *)boldSystemFontOfSize:(CGFloat)size;
-+ (NSFont *)fontWithName:(NSString *)name size:(CGFloat)size;
-+ (NSFont *)monospacedSystemFontOfSize:(CGFloat)size weight:(CGFloat)weight;
+@property (nonatomic, readonly) CGFloat pointSize;
++ (NSFont *)systemFontOfSize:(CGFloat)s;
++ (NSFont *)boldSystemFontOfSize:(CGFloat)s;
++ (NSFont *)fontWithName:(NSString *)n size:(CGFloat)s;
 - (UIFont *)mt_uiFont;
 @end
 
-@implementation NSFont
-+ (NSFont *)systemFontOfSize:(CGFloat)size {
-    NSFont *f = [NSFont new]; f.pointSize = size; f.bold = NO; return f;
+@implementation NSFont {
+    CGFloat _pt;
+    BOOL _bold;
 }
-+ (NSFont *)boldSystemFontOfSize:(CGFloat)size {
-    NSFont *f = [NSFont new]; f.pointSize = size; f.bold = YES; return f;
++ (NSFont *)systemFontOfSize:(CGFloat)s {
+    NSFont *f = [NSFont new]; f->_pt = s; f->_bold = NO;
+    return f;
 }
-+ (NSFont *)fontWithName:(NSString *)name size:(CGFloat)size {
-    return [self systemFontOfSize:size];
++ (NSFont *)boldSystemFontOfSize:(CGFloat)s {
+    NSFont *f = [NSFont new]; f->_pt = s; f->_bold = YES;
+    return f;
 }
-+ (NSFont *)monospacedSystemFontOfSize:(CGFloat)size weight:(CGFloat)weight {
-    NSFont *f = [NSFont new]; f.pointSize = size; f.bold = NO; return f;
++ (NSFont *)fontWithName:(NSString *)n size:(CGFloat)s {
+    return [self systemFontOfSize:s];
 }
+- (CGFloat)pointSize { return _pt; }
 - (UIFont *)mt_uiFont {
-    CGFloat s = self.pointSize > 0 ? self.pointSize : 13;
-    return self.bold ? [UIFont boldSystemFontOfSize:s] : [UIFont systemFontOfSize:s];
+    return _bold ? [UIFont boldSystemFontOfSize:_pt] : [UIFont systemFontOfSize:_pt];
 }
 @end
 
-#pragma mark - NSTextField
+// ----------------------------------------------------------------
+#pragma mark - NSTextField  (UILabel-backed)
 
 @interface NSTextField : NSView
-@property (nonatomic, copy)   NSString *stringValue;
+@property (nonatomic, copy) NSString *stringValue;
 @property (nonatomic, strong) NSFont *font;
 @property (nonatomic, strong) NSColor *textColor;
-@property (nonatomic, assign) BOOL bordered;
-@property (nonatomic, assign) BOOL editable;
-@property (nonatomic, assign) BOOL selectable;
-@property (nonatomic, assign) NSInteger alignment;
+@property (nonatomic) BOOL editable;
+@property (nonatomic) BOOL selectable;
+- (void)setBordered:(BOOL)b;
 @end
 
 @implementation NSTextField {
     UILabel *_label;
-    NSColor *_tfTextColor;
+    NSColor *_textColor;
     NSFont *_font;
     BOOL _bordered;
-    BOOL _editable;
-    BOOL _selectable;
 }
 
-- (instancetype)initWithFrame:(NSRect)frameRect {
-    self = [super initWithFrame:frameRect];
+- (instancetype)initWithFrame:(CGRect)fr {
+    self = [super initWithFrame:fr];
     if (self) {
-        _label = [[UILabel alloc] initWithFrame:self.host.bounds];
+        _label = [[UILabel alloc] initWithFrame:CGRectZero];
         _label.numberOfLines = 0;
-        _label.font = [UIFont systemFontOfSize:13];
-        _label.textColor = [UIColor labelColor];
         _label.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [self.host addSubview:_label];
-        _bordered = YES;
+        [_host addSubview:_label];
+        [self setBackgroundColor:[NSColor clearColor]];
     }
     return self;
 }
-
-- (NSString *)stringValue { return _label.text ?: @""; }
-- (void)setStringValue:(NSString *)v { _label.text = v; }
-
+- (NSString *)stringValue { return _label.text; }
+- (void)setStringValue:(NSString *)s { _label.text = s; }
 - (NSFont *)font { return _font; }
 - (void)setFont:(NSFont *)f {
     _font = f;
-    if (f) _label.font = [f mt_uiFont];
+    _label.font = f ? [f mt_uiFont] : [UIFont systemFontOfSize:14];
 }
-
-- (NSColor *)textColor { return _tfTextColor; }
+- (NSColor *)textColor { return _textColor; }
 - (void)setTextColor:(NSColor *)c {
-    _tfTextColor = c;
-    _label.textColor = c ? [c mt_uiColor] : [UIColor labelColor];
+    _textColor = c;
+    _label.textColor = c ? [c mt_uiColor] : [UIColor blackColor];
 }
-
-- (void)setBackgroundColor:(NSColor *)c {
-    [super setBackgroundColor:c];
-    _label.backgroundColor = c ? [c mt_uiColor] : [UIColor clearColor];
-}
-
-- (BOOL)bordered { return _bordered; }
 - (void)setBordered:(BOOL)b { _bordered = b; }
-
-- (BOOL)editable { return _editable; }
-- (void)setEditable:(BOOL)e { _editable = e; }
-
-- (BOOL)selectable { return _selectable; }
-- (void)setSelectable:(BOOL)s { _selectable = s; }
-
-- (NSInteger)alignment { return (NSInteger)_label.textAlignment; }
-- (void)setAlignment:(NSInteger)a { _label.textAlignment = (NSTextAlignment)a; }
-
+- (void)layout {
+    [super layout];
+    _label.frame = _host.bounds;
+}
 @end
 
-#pragma mark - NSControl / NSButton(占位, 够用即可)
+// ----------------------------------------------------------------
+#pragma mark - NSButton  (UIButton-backed)
 
-@interface NSControl : NSView
-@property (nonatomic, weak) id target;
-@property (nonatomic, assign) SEL action;
-@property (nonatomic, assign) NSInteger integerValue;
-@end
-
-@implementation NSControl
-@end
-
-@interface NSButton : NSControl
+@interface NSButton : NSView
 @property (nonatomic, copy) NSString *title;
-@property (nonatomic, assign) NSInteger bezelStyle;
-- (instancetype)initWithFrame:(NSRect)frameRect;
-- (void)setButtonType:(NSInteger)type;
+@property (nonatomic, weak) id target;
+@property (nonatomic, strong) SEL action;
+- (void)setBezelStyle:(NSUInteger)s;
+- (void)setTarget:(id)t action:(SEL)a;
 @end
 
 @implementation NSButton {
-    UIButton *_button;
+    UIButton *_btn;
+    NSString *_title;
 }
-
-- (instancetype)initWithFrame:(NSRect)frameRect {
-    self = [super initWithFrame:frameRect];
+- (instancetype)initWithFrame:(CGRect)fr {
+    self = [super initWithFrame:fr];
     if (self) {
-        _button = [UIButton buttonWithType:UIButtonTypeSystem];
-        _button.frame = self.host.bounds;
-        _button.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [self.host addSubview:_button];
+        _btn = [[UIButton alloc] initWithFrame:CGRectZero];
+        _btn.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [_host addSubview:_btn];
     }
     return self;
 }
-
-- (NSString *)title { return [_button titleForState:UIControlStateNormal] ?: @""; }
-- (void)setTitle:(NSString *)t { [_button setTitle:t forState:UIControlStateNormal]; }
-- (void)setButtonType:(NSInteger)type { }
-
+- (NSString *)title { return _title; }
+- (void)setTitle:(NSString *)t { _title = t; [_btn setTitle:t forState:UIControlStateNormal]; }
+- (void)setBezelStyle:(NSUInteger)s { /* no-op */ }
+- (void)setTarget:(id)t action:(SEL)a {
+    _target = t;
+    _action = a;
+    [_btn addTarget:t action:a forControlEvents:UIControlEventTouchUpInside];
+}
+- (void)layout {
+    [super layout];
+    _btn.frame = _host.bounds;
+}
 @end
 
-#pragma mark - NSImage(占位)
+// ----------------------------------------------------------------
+#pragma mark - NSImage
 
 @interface NSImage : NSObject
-@property (nonatomic, assign) NSSize size;
-+ (NSImage *)imageNamed:(NSString *)name;
++ (NSImage *)imageNamed:(NSString *)n;
+- (void)mt_drawInRect:(CGRect)r;
 @end
 
 @implementation NSImage
-+ (NSImage *)imageNamed:(NSString *)name { return nil; }
++ (NSImage *)imageNamed:(NSString *)n {
+    return [NSImage new];
+}
+- (void)mt_drawInRect:(CGRect)r { /* placeholder */ }
 @end
+
+// ----------------------------------------------------------------
+#pragma mark - NSBezierPath (minimal, uses CGPath)
+
+@interface NSBezierPath : NSObject
+- (void)moveToPoint:(CGPoint)pt;
+- (void)lineToPoint:(CGPoint)pt;
+- (void)closePath;
+- (void)addRect:(CGRect)r;
+- (void)stroke;
+- (void)fill;
+@end
+
+@implementation NSBezierPath {
+    CGMutablePathRef _path;
+}
+- (instancetype)init {
+    self = [super init];
+    if (self) _path = CGPathCreateMutable();
+    return self;
+}
+- (void)moveToPoint:(CGPoint)pt { CGPathAddMoveToPoint(_path, NULL, pt.x, pt.y); }
+- (void)lineToPoint:(CGPoint)pt { CGPathAddLineToPoint(_path, NULL, pt.x, pt.y); }
+- (void)closePath { CGPathCloseSubpath(_path); }
+- (void)addRect:(CGRect)r { CGPathAddRect(_path, NULL, r); }
+- (void)stroke {
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (ctx && _path) { CGContextStrokePath(ctx, _path); }
+}
+- (void)fill {
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (ctx && _path) { CGContextFillPath(ctx, _path); }
+}
+- (void)dealloc { if (_path) CGPathRelease(_path); [super dealloc]; }
+@end
+
+// ----------------------------------------------------------------
+#pragma mark - NSRectFill helpers
+
+void NSRectFill(CGRect rect) {
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (ctx) CGContextFillRect(ctx, rect);
+}
+void NSRectFrame(CGRect rect) {
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (ctx) CGContextStrokeRect(ctx, rect);
+}
+void NSFrameRect(CGRect rect) {
+    CGContextRef ctx = UIGraphicsGetCurrentContext();
+    if (ctx) CGContextStrokeRect(ctx, rect);
+}
+CGRect NSMakeRect(CGFloat x, CGFloat y, CGFloat w, CGFloat h) {
+    return CGRectMake(x, y, w, h);
+}
+CGPoint NSMakePoint(CGFloat x, CGFloat y) { return CGPointMake(x, y); }
+CGSize  NSMakeSize(CGFloat w, CGFloat h)  { return CGSizeMake(w, h); }
+
+// ----------------------------------------------------------------
+#pragma mark - NSApplicationMain
+
+int NSApplicationMain(int argc, char *argv[]) {
+    NSApplication *app = [NSApplication sharedApplication];
+    [app run];
+    return 0;
+}
