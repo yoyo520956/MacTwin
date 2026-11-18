@@ -9,6 +9,7 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <CoreGraphics/CGPathFunctions.h>
 
 //  Forward declarations
 @class NSView, NSWindow;
@@ -361,7 +362,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
 @interface NSButton : NSView
 @property (nonatomic, copy) NSString *title;
 @property (nonatomic, weak) id target;
-@property (nonatomic, strong) SEL action;
+@property (nonatomic, assign) SEL action;
 - (void)setBezelStyle:(NSUInteger)s;
 - (void)setTarget:(id)t action:(SEL)a;
 @end
@@ -406,41 +407,6 @@ static const void *kMTWindowKey   = &kMTWindowKey;
     return [NSImage new];
 }
 - (void)mt_drawInRect:(CGRect)r { /* placeholder */ }
-@end
-
-// ----------------------------------------------------------------
-#pragma mark - NSBezierPath (minimal, uses CGPath)
-
-@interface NSBezierPath : NSObject
-- (void)moveToPoint:(CGPoint)pt;
-- (void)lineToPoint:(CGPoint)pt;
-- (void)closePath;
-- (void)addRect:(CGRect)r;
-- (void)stroke;
-- (void)fill;
-@end
-
-@implementation NSBezierPath {
-    CGMutablePathRef _path;
-}
-- (instancetype)init {
-    self = [super init];
-    if (self) _path = CGPathCreateMutable();
-    return self;
-}
-- (void)moveToPoint:(CGPoint)pt { CGPathAddMoveToPoint(_path, NULL, pt.x, pt.y); }
-- (void)lineToPoint:(CGPoint)pt { CGPathAddLineToPoint(_path, NULL, pt.x, pt.y); }
-- (void)closePath { CGPathCloseSubpath(_path); }
-- (void)addRect:(CGRect)r { CGPathAddRect(_path, NULL, r); }
-- (void)stroke {
-    CGContextRef ctx = UIGraphicsGetCurrentContext();
-    if (ctx && _path) { CGContextStrokePath(ctx, _path); }
-}
-- (void)fill {
-    CGContextRef ctx = UIGraphicsGetCurrentContext();
-    if (ctx && _path) { CGContextFillPath(ctx, _path); }
-}
-- (void)dealloc { if (_path) CGPathRelease(_path); [super dealloc]; }
 @end
 
 // ----------------------------------------------------------------
