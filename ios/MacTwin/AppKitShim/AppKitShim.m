@@ -1,12 +1,12 @@
 //  AppKitShim.m
 //  MacTwin — 最小 AppKit 兼容层
 //
-//  为什么只需要 AppKit：
-//    Foundation(NSString/NSArray/NSData/NSURL…) 在 iOS 上本来就有，
-//    CoreGraphics / CoreText / CoreAnimation / Metal 也都有。
-//    真正缺的只有 AppKit —— 这一层把它映射到 UIKit。
+//  为什么只需要 AppKit: 
+//    Foundation(NSString/NSArray/NSData/NSURL…) 在 iOS 上本来就有, 
+//    CoreGraphics / CoreText / CoreAnimation / Metal 也都有. 
+//    真正缺的只有 AppKit —— 这一层把它映射到 UIKit. 
 //
-//  坐标：AppKit 原点在左下，UIKit 在左上 → 根视图统一翻 Y 轴。
+//  坐标: AppKit 原点在左下, UIKit 在左上 → 根视图统一翻 Y 轴. 
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -14,7 +14,7 @@
 
 #pragma mark - 运行时桥
 
-// NSView ↔ UIView 的对应表（用关联对象反向查）
+// NSView ↔ UIView 的对应表(用关联对象反向查)
 static const void *kMTUIViewKey   = &kMTUIViewKey;
 static const void *kMTNSViewKey   = &kMTNSViewKey;
 static const void *kMTWindowKey   = &kMTWindowKey;
@@ -28,7 +28,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
 @implementation NSResponder
 @end
 
-#pragma mark - NSColor（先声明，NSView 要用）
+#pragma mark - NSColor(先声明, NSView 要用)
 
 @interface NSColor : NSObject
 @property (nonatomic, readonly) CGFloat red, green, blue, alpha;
@@ -69,7 +69,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
 
 @class NSView, NSWindow;
 
-// UIKit 宿主：把 drawRect: 转发给 NSView，并翻转坐标
+// UIKit 宿主: 把 drawRect: 转发给 NSView, 并翻转坐标
 @interface MTViewHost : UIView
 @property (nonatomic, weak) NSView *nsView;
 @end
@@ -121,7 +121,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
     if (self) {
         _host = [[MTViewHost alloc] initWithFrame:frameRect];
         _host.nsView = self;
-        _host.layer.isGeometryFlipped = YES;   // AppKit 坐标：原点左下
+        _host.layer.isGeometryFlipped = YES;   // AppKit 坐标: 原点左下
         objc_setAssociatedObject(_host, kMTNSViewKey, self, OBJC_ASSOCIATION_ASSIGN);
         _alphaValue = 1.0;
         _autoresizesSubviews = YES;
@@ -175,7 +175,7 @@ static const void *kMTWindowKey   = &kMTWindowKey;
     }
     return arr;
 }
-- (void)setSubviews:(NSArray<NSView *> *)v { /* 只读语义，忽略 */ }
+- (void)setSubviews:(NSArray<NSView *> *)v { /* 只读语义, 忽略 */ }
 
 - (void)addSubview:(NSView *)view {
     if (!view || !view.host) return;
@@ -255,7 +255,7 @@ typedef NS_OPTIONS(NSUInteger, NSWindowStyleMask) {
     objc_setAssociatedObject(_uiWindow, kMTNSViewKey, cv, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [_uiWindow addSubview:cv.host];
 
-    // 默认 rootViewController，否则 iOS 13+ 不显示
+    // 默认 rootViewController, 否则 iOS 13+ 不显示
     UIViewController *vc = [UIViewController new];
     vc.view.backgroundColor = _uiWindow.backgroundColor;
     [vc.view addSubview:cv.host];
@@ -299,7 +299,7 @@ typedef NS_OPTIONS(NSUInteger, NSWindowStyleMask) {
     });
 }
 
-- (void)center { /* iOS 全屏，无需居中 */ }
+- (void)center { /* iOS 全屏, 无需居中 */ }
 
 - (void)close { [self orderOut:nil]; }
 
@@ -362,7 +362,7 @@ typedef NS_OPTIONS(NSUInteger, NSWindowStyleMask) {
 - (void)run {
     _running = YES;
 
-    // 在后台线程被调用：UI 交给主线程，本线程用 runloop 挂住
+    // 在后台线程被调用: UI 交给主线程, 本线程用 runloop 挂住
     dispatch_async(dispatch_get_main_queue(), ^{
         id<NSApplicationDelegate> d = self.delegate;
         if (d && [d respondsToSelector:@selector(applicationDidFinishLaunching:)]) {
@@ -376,7 +376,7 @@ typedef NS_OPTIONS(NSUInteger, NSWindowStyleMask) {
         }
     });
 
-    // 保持线程存活（runloop 空转，可被 stop 打断）
+    // 保持线程存活(runloop 空转, 可被 stop 打断)
     while (_running) {
         @autoreleasepool {
             [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
@@ -395,7 +395,7 @@ typedef NS_OPTIONS(NSUInteger, NSWindowStyleMask) {
 
 #pragma mark - NSApplicationMain
 
-// AppKit 程序的入口。macOS 上是 int NSApplicationMain(int, const char **)
+// AppKit 程序的入口. macOS 上是 int NSApplicationMain(int, const char **)
 int NSApplicationMain(int argc, const char **argv) {
     NSApplication *app = [NSApplication sharedApplication];
     [app run];
@@ -524,7 +524,7 @@ NSSize  NSMakeSize(CGFloat w, CGFloat h) { return CGSizeMake(w, h); }
 
 @end
 
-#pragma mark - NSControl / NSButton（占位，够用即可）
+#pragma mark - NSControl / NSButton(占位, 够用即可)
 
 @interface NSControl : NSView
 @property (nonatomic, weak) id target;
@@ -563,7 +563,7 @@ NSSize  NSMakeSize(CGFloat w, CGFloat h) { return CGSizeMake(w, h); }
 
 @end
 
-#pragma mark - NSImage（占位）
+#pragma mark - NSImage(占位)
 
 @interface NSImage : NSObject
 @property (nonatomic, assign) NSSize size;
