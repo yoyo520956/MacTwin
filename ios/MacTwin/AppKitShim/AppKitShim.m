@@ -9,7 +9,6 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 #import <CoreGraphics/CoreGraphics.h>
-#import <CoreGraphics/CGPathFunctions.h>
 
 //  Forward declarations
 @class NSView, NSWindow;
